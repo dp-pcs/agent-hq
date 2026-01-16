@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1f26;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2d333b;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3d444d;
+}
+
+/* Drag region for custom title bar */
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Animation utilities */
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
+/* Message content styling */
+.message-content pre {
+  background: #161b22;
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  font-size: 13px;
+}
+
+.message-content code {
+  background: #161b22;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.message-content pre code {
+  background: none;
+  padding: 0;
+}
+
+/* Tool call styling */
+.tool-call {
+  border-left: 3px solid #58a6ff;
+  background: rgba(88, 166, 255, 0.1);
+}
+
+.tool-result {
+  border-left: 3px solid #3fb950;
+  background: rgba(63, 185, 80, 0.1);
+}
+
+.tool-error {
+  border-left: 3px solid #f85149;
+  background: rgba(248, 81, 73, 0.1);
+}
