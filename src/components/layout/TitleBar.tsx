@@ -31,7 +31,7 @@ export function TitleBar() {
 
       {/* Window controls (for non-macOS) */}
       <div className="flex items-center gap-1 no-drag">
-        {process.platform !== 'darwin' && (
+        {window.electronAPI.platform !== 'darwin' && (
           <>
             <button
               onClick={handleMinimize}

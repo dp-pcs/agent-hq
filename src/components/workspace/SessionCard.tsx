@@ -10,72 +10,107 @@ interface SessionCardProps {
 export function SessionCard({ session, onClick }: SessionCardProps) {
   const timeAgo = getTimeAgo(new Date(session.lastMessageAt));
 
-  // Get the last text message for preview
-  const lastMessage = session.messages
+  // Count agent statuses
+  const agentStats = session.agents.reduce((acc, agent) => {
+    acc[agent.status] = (acc[agent.status] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  // Get the last user message for context
+  const lastUserMessage = session.messages
     .slice()
     .reverse()
-    .find((m) => m.content.some((c) => c.type === 'text'));
+    .find((m) => m.role === 'user' && m.content.some((c) => c.type === 'text'));
 
-  const previewText = lastMessage?.content.find((c) => c.type === 'text')?.text;
-  const truncatedPreview = previewText
-    ? previewText.slice(0, 150) + (previewText.length > 150 ? '...' : '')
-    : 'No messages yet';
+  const lastText = lastUserMessage?.content.find((c) => c.type === 'text');
+  const summary = lastText && 'text' in lastText
+    ? lastText.text.slice(0, 120) + (lastText.text.length > 120 ? '...' : '')
+    : session.currentTask || 'No recent activity';
 
   return (
     <button
       onClick={onClick}
-      className="w-full text-left p-4 bg-hq-surface border border-hq-border rounded-lg hover:border-hq-accent/50 hover:bg-hq-surface/80 transition-all group"
+      className="w-full text-left p-5 bg-hq-surface border border-hq-border rounded-lg hover:border-hq-accent/50 hover:bg-hq-surface/80 transition-all group"
     >
       {/* Header */}
-      <div className="flex items-start justify-between mb-3">
+      <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-2">
           <StatusIndicator status={session.status} size="md" />
-          <span className="text-sm font-medium text-hq-text capitalize">
-            {session.status}
-          </span>
+          <div>
+            <span className="text-base font-semibold text-hq-text">
+              {session.workspaceName}
+            </span>
+            <div className="text-xs font-mono text-hq-text-muted mt-0.5">
+              {session.id.slice(0, 8)}...
+            </div>
+          </div>
         </div>
         <span className="text-xs text-hq-text-muted">{timeAgo}</span>
       </div>
 
-      {/* Session ID */}
-      <div className="mb-2">
-        <span className="text-xs font-mono text-hq-text-muted">
-          {session.id.slice(0, 8)}...
-        </span>
-      </div>
-
-      {/* Preview */}
-      <p className="text-sm text-hq-text-muted line-clamp-2 mb-3 min-h-[2.5rem]">
-        {truncatedPreview}
+      {/* Summary */}
+      <p className="text-sm text-hq-text mb-4 line-clamp-2 min-h-[2.5rem]">
+        {summary}
       </p>
 
-      {/* Agents */}
+      {/* Stats Grid */}
+      <div className="grid grid-cols-3 gap-3 mb-4 pb-4 border-b border-hq-border">
+        {/* Agents */}
+        <div className="flex flex-col">
+          <span className="text-xs text-hq-text-muted mb-1">Agents</span>
+          <div className="flex items-center gap-1">
+            <span className="text-lg font-semibold text-hq-text">
+              {session.agents.length}
+            </span>
+            {agentStats.working > 0 && (
+              <span className="text-xs text-hq-success">
+                ({agentStats.working} active)
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="flex flex-col">
+          <span className="text-xs text-hq-text-muted mb-1">Messages</span>
+          <span className="text-lg font-semibold text-hq-text">
+            {session.messages.length}
+          </span>
+        </div>
+
+        {/* Status */}
+        <div className="flex flex-col">
+          <span className="text-xs text-hq-text-muted mb-1">Status</span>
+          <span className={`text-sm font-medium capitalize ${
+            session.status === 'active' ? 'text-hq-success' :
+            session.status === 'idle' ? 'text-hq-warning' :
+            'text-hq-text-muted'
+          }`}>
+            {session.status}
+          </span>
+        </div>
+      </div>
+
+      {/* Agents avatars */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1">
-          {session.agents.slice(0, 4).map((agent, i) => (
+          {session.agents.slice(0, 5).map((agent, i) => (
             <AgentAvatar
               key={agent.id}
               agent={agent}
               size="sm"
-              style={{ marginLeft: i > 0 ? '-8px' : '0', zIndex: 4 - i }}
+              style={{ marginLeft: i > 0 ? '-8px' : '0', zIndex: 5 - i }}
             />
           ))}
-          {session.agents.length > 4 && (
+          {session.agents.length > 5 && (
             <span className="ml-1 text-xs text-hq-text-muted">
-              +{session.agents.length - 4}
+              +{session.agents.length - 5}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1 text-xs text-hq-text-muted">
-          <MessageIcon />
-          <span>{session.messages.length}</span>
-        </div>
-      </div>
-
-      {/* Hover indicator */}
-      <div className="mt-3 pt-3 border-t border-hq-border opacity-0 group-hover:opacity-100 transition-opacity">
-        <span className="text-xs text-hq-accent flex items-center gap-1">
+        {/* Hover indicator */}
+        <span className="text-xs text-hq-accent opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
           Open chat
           <ArrowIcon />
         </span>

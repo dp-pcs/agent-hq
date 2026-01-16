@@ -23,17 +23,19 @@ export class CLIBridgeService extends EventEmitter {
     }
 
     try {
+      // Use home directory if workingDir is not a valid path
+      const cwd = workingDir && workingDir.startsWith('/') ? workingDir : process.env.HOME;
+
+      console.log(`Taking over session ${sessionId} in ${cwd}`);
+
       // Spawn claude with --resume flag
       const claudeProcess = spawn('claude', [
         '--resume', sessionId,
-        '--output-format', 'stream-json',
       ], {
-        cwd: workingDir,
-        env: {
-          ...process.env,
-          FORCE_COLOR: '0', // Disable color output for easier parsing
-        },
+        cwd,
+        env: process.env,
         stdio: ['pipe', 'pipe', 'pipe'],
+        shell: false,
       });
 
       const controlled: ControlledSession = {

@@ -1,6 +1,9 @@
 // Type definitions for the Electron API exposed via preload
 
 export interface ElectronAPI {
+  // Platform info
+  platform: NodeJS.Platform;
+
   // Discovery
   discoverSessions: () => Promise<any[]>;
   getSessionMessages: (sessionId: string) => Promise<any[]>;
