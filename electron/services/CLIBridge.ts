@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, ChildProcess, execSync } from 'child_process';
+import * as os from 'os';
 
 interface ControlledSession {
   sessionId: string;
@@ -10,9 +11,48 @@ interface ControlledSession {
 
 export class CLIBridgeService extends EventEmitter {
   private controlledSessions: Map<string, ControlledSession> = new Map();
+  private claudePath: string | null = null;
 
   constructor() {
     super();
+    this.findClaudePath();
+  }
+
+  private findClaudePath(): void {
+    try {
+      // Try to find claude using which command
+      try {
+        this.claudePath = execSync('which claude', { encoding: 'utf-8' }).trim();
+        console.log(`Found claude at: ${this.claudePath}`);
+        return;
+      } catch {
+        // which command failed, continue
+      }
+
+      // Try common paths
+      const possiblePaths = [
+        '/usr/local/bin/claude',
+        `${os.homedir()}/.nvm/versions/node/v22.22.0/bin/claude`,
+        `${os.homedir()}/.local/bin/claude`,
+      ];
+
+      for (const path of possiblePaths) {
+        try {
+          execSync(`test -x "${path}"`, { encoding: 'utf-8' });
+          this.claudePath = path;
+          console.log(`Found claude at: ${this.claudePath}`);
+          return;
+        } catch {
+          continue;
+        }
+      }
+
+      console.warn('Could not find claude executable, will try "claude" and hope it\'s in PATH');
+      this.claudePath = 'claude';
+    } catch (err) {
+      console.error('Error finding claude path:', err);
+      this.claudePath = 'claude';
+    }
   }
 
   async takeoverSession(sessionId: string, workingDir: string): Promise<boolean> {
@@ -26,14 +66,21 @@ export class CLIBridgeService extends EventEmitter {
       // Use home directory if workingDir is not a valid path
       const cwd = workingDir && workingDir.startsWith('/') ? workingDir : process.env.HOME;
 
-      console.log(`Taking over session ${sessionId} in ${cwd}`);
+      console.log(`Taking over session ${sessionId} in ${cwd} using ${this.claudePath}`);
+
+      if (!this.claudePath) {
+        throw new Error('Claude executable not found. Please ensure Claude Code is installed.');
+      }
 
       // Spawn claude with --resume flag
-      const claudeProcess = spawn('claude', [
+      const claudeProcess = spawn(this.claudePath, [
         '--resume', sessionId,
       ], {
         cwd,
-        env: process.env,
+        env: {
+          ...process.env,
+          PATH: process.env.PATH || '',
+        },
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,
       });
@@ -41,7 +88,7 @@ export class CLIBridgeService extends EventEmitter {
       const controlled: ControlledSession = {
         sessionId,
         process: claudeProcess,
-        workingDir,
+        workingDir: cwd || workingDir,
         isAlive: true,
       };
 
@@ -57,6 +104,7 @@ export class CLIBridgeService extends EventEmitter {
       // Handle stderr
       claudeProcess.stderr?.on('data', (data: Buffer) => {
         const chunk = data.toString();
+        console.error(`Claude stderr for ${sessionId}:`, chunk);
         this.emit('error', sessionId, chunk);
       });
 
@@ -129,7 +177,12 @@ export class CLIBridgeService extends EventEmitter {
   async forkSession(sessionId: string, workingDir: string): Promise<string> {
     // Fork creates a new session ID while continuing from the same point
     return new Promise((resolve, reject) => {
-      const claudeProcess = spawn('claude', [
+      if (!this.claudePath) {
+        reject(new Error('Claude executable not found'));
+        return;
+      }
+
+      const claudeProcess = spawn(this.claudePath, [
         '--resume', sessionId,
         '--fork-session',
         '--print',

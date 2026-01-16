@@ -66,9 +66,11 @@ export function ChatPanel({ session }: ChatPanelProps) {
   const handleTakeControl = async () => {
     setIsTakingOver(true);
     try {
+      // Use workingDirectory from session, or workspace name as fallback
+      const workingDir = session.workingDirectory || session.workspaceName || '';
       const success = await window.electronAPI.takeOverSession(
         session.id,
-        session.workingDirectory || process.cwd()
+        workingDir
       );
       if (success) {
         setControlled(session.id, true);
