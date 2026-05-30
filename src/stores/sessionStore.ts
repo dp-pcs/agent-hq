@@ -8,6 +8,7 @@ interface SessionStore {
   controlledSessionIds: Set<string>;
   isLoading: boolean;
   error: string | null;
+  currentView: 'dashboard' | 'workspace';
 
   // Actions
   setSessions: (sessions: Session[]) => void;
@@ -18,6 +19,7 @@ interface SessionStore {
   setControlled: (sessionId: string, controlled: boolean) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setView: (view: 'dashboard' | 'workspace') => void;
 
   // Computed
   getSelectedSession: () => Session | null;
@@ -30,6 +32,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   controlledSessionIds: new Set(),
   isLoading: false,
   error: null,
+  currentView: 'dashboard',
 
   setSessions: (sessions) => set({ sessions, isLoading: false }),
 
@@ -80,6 +83,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   setLoading: (loading) => set({ isLoading: loading }),
 
   setError: (error) => set({ error }),
+
+  setView: (view) => set({ currentView: view }),
 
   getSelectedSession: () => {
     const { sessions, selectedSessionId } = get();

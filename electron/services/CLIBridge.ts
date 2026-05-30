@@ -1,10 +1,13 @@
 import { EventEmitter } from 'events';
-import { spawn, ChildProcess, execSync } from 'child_process';
+import { execSync } from 'child_process';
 import * as os from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as pty from 'node-pty';
 
 interface ControlledSession {
   sessionId: string;
-  process: ChildProcess;
+  process: pty.IPty;
   workingDir: string;
   isAlive: boolean;
 }
@@ -18,40 +21,76 @@ export class CLIBridgeService extends EventEmitter {
     this.findClaudePath();
   }
 
+  private nodePath: string | null = null;
+
   private findClaudePath(): void {
     try {
       // Try to find claude using which command
+      let claudeSymlink: string;
       try {
-        this.claudePath = execSync('which claude', { encoding: 'utf-8' }).trim();
-        console.log(`Found claude at: ${this.claudePath}`);
-        return;
+        claudeSymlink = execSync('which claude', { encoding: 'utf-8' }).trim();
       } catch {
-        // which command failed, continue
-      }
+        // which command failed, try common paths
+        const possiblePaths = [
+          '/usr/local/bin/claude',
+          `${os.homedir()}/.nvm/versions/node/v22.22.0/bin/claude`,
+          `${os.homedir()}/.local/bin/claude`,
+        ];
 
-      // Try common paths
-      const possiblePaths = [
-        '/usr/local/bin/claude',
-        `${os.homedir()}/.nvm/versions/node/v22.22.0/bin/claude`,
-        `${os.homedir()}/.local/bin/claude`,
-      ];
+        for (const testPath of possiblePaths) {
+          try {
+            execSync(`test -x "${testPath}"`, { encoding: 'utf-8' });
+            claudeSymlink = testPath;
+            break;
+          } catch {
+            continue;
+          }
+        }
 
-      for (const path of possiblePaths) {
-        try {
-          execSync(`test -x "${path}"`, { encoding: 'utf-8' });
-          this.claudePath = path;
-          console.log(`Found claude at: ${this.claudePath}`);
+        if (!claudeSymlink!) {
+          console.warn('Could not find claude executable');
+          this.claudePath = 'claude';
           return;
-        } catch {
-          continue;
         }
       }
 
-      console.warn('Could not find claude executable, will try "claude" and hope it\'s in PATH');
-      this.claudePath = 'claude';
+      console.log(`Found claude symlink at: ${claudeSymlink}`);
+
+      // Resolve the symlink to get the actual cli.js file
+      try {
+        const realPath = fs.realpathSync(claudeSymlink);
+        console.log(`Resolved to actual file: ${realPath}`);
+        this.claudePath = realPath;
+
+        // Find the node binary in the same installation
+        // cli.js is in lib/node_modules/@anthropic-ai/claude-code/cli.js
+        // node is in bin/node
+        const nodeModulesPath = path.dirname(path.dirname(realPath)); // Go up to node_modules/@anthropic-ai
+        const nvmBinPath = path.join(path.dirname(path.dirname(nodeModulesPath)), 'bin');
+        const nodeBinPath = path.join(nvmBinPath, 'node');
+
+        if (fs.existsSync(nodeBinPath)) {
+          this.nodePath = nodeBinPath;
+          console.log(`Found node binary at: ${this.nodePath}`);
+        } else {
+          // Fall back to system node
+          try {
+            this.nodePath = execSync('which node', { encoding: 'utf-8' }).trim();
+            console.log(`Using system node at: ${this.nodePath}`);
+          } catch {
+            console.warn('Could not find node binary, will use "node" command');
+            this.nodePath = 'node';
+          }
+        }
+      } catch (err) {
+        console.warn('Could not resolve symlink, using original path:', err);
+        this.claudePath = claudeSymlink;
+        this.nodePath = 'node';
+      }
     } catch (err) {
       console.error('Error finding claude path:', err);
       this.claudePath = 'claude';
+      this.nodePath = 'node';
     }
   }
 
@@ -72,17 +111,17 @@ export class CLIBridgeService extends EventEmitter {
         throw new Error('Claude executable not found. Please ensure Claude Code is installed.');
       }
 
-      // Spawn claude with --resume flag
-      const claudeProcess = spawn(this.claudePath, [
+      // Spawn node with claude script using node-pty
+      // Claude is a node script, so we need to spawn node with the script path
+      const claudeProcess = pty.spawn(this.nodePath || 'node', [
+        this.claudePath,
         '--resume', sessionId,
       ], {
+        name: 'xterm-color',
+        cols: 120,
+        rows: 30,
         cwd,
-        env: {
-          ...process.env,
-          PATH: process.env.PATH || '',
-        },
-        stdio: ['pipe', 'pipe', 'pipe'],
-        shell: false,
+        env: process.env as { [key: string]: string },
       });
 
       const controlled: ControlledSession = {
@@ -94,32 +133,17 @@ export class CLIBridgeService extends EventEmitter {
 
       this.controlledSessions.set(sessionId, controlled);
 
-      // Handle stdout
-      claudeProcess.stdout?.on('data', (data: Buffer) => {
-        const chunk = data.toString();
-        this.emit('output', sessionId, chunk);
-        this.parseStreamOutput(sessionId, chunk);
-      });
-
-      // Handle stderr
-      claudeProcess.stderr?.on('data', (data: Buffer) => {
-        const chunk = data.toString();
-        console.error(`Claude stderr for ${sessionId}:`, chunk);
-        this.emit('error', sessionId, chunk);
+      // Handle data from the PTY
+      claudeProcess.onData((data: string) => {
+        this.emit('output', sessionId, data);
+        this.parseStreamOutput(sessionId, data);
       });
 
       // Handle process exit
-      claudeProcess.on('close', (code) => {
-        console.log(`Claude process for session ${sessionId} exited with code ${code}`);
+      claudeProcess.onExit(({ exitCode }) => {
+        console.log(`Claude process for session ${sessionId} exited with code ${exitCode}`);
         controlled.isAlive = false;
-        this.emit('status-changed', sessionId, code === 0 ? 'completed' : 'error');
-        this.controlledSessions.delete(sessionId);
-      });
-
-      claudeProcess.on('error', (err) => {
-        console.error(`Error with Claude process for session ${sessionId}:`, err);
-        controlled.isAlive = false;
-        this.emit('status-changed', sessionId, 'error');
+        this.emit('status-changed', sessionId, exitCode === 0 ? 'completed' : 'error');
         this.controlledSessions.delete(sessionId);
       });
 
@@ -138,18 +162,15 @@ export class CLIBridgeService extends EventEmitter {
       return;
     }
 
-    // For interrupt mode, we'd need to send SIGINT first
-    // For now, we just write to stdin
+    // For interrupt mode, send SIGINT first
     if (mode === 'interrupt') {
-      // Send interrupt signal
       controlled.process.kill('SIGINT');
-      // Wait a bit then send the message
       setTimeout(() => {
-        controlled.process.stdin?.write(message + '\n');
+        controlled.process.write(message + '\n');
       }, 100);
     } else {
       // Queue mode - just send the message
-      controlled.process.stdin?.write(message + '\n');
+      controlled.process.write(message + '\n');
     }
   }
 
@@ -161,12 +182,12 @@ export class CLIBridgeService extends EventEmitter {
 
     if (controlled.isAlive) {
       // Send exit command or kill the process gracefully
-      controlled.process.stdin?.write('/exit\n');
+      controlled.process.write('/exit\n');
 
       // Give it a moment to exit gracefully
       setTimeout(() => {
         if (controlled.isAlive) {
-          controlled.process.kill('SIGTERM');
+          controlled.process.kill();
         }
       }, 1000);
     }
@@ -182,25 +203,26 @@ export class CLIBridgeService extends EventEmitter {
         return;
       }
 
-      const claudeProcess = spawn(this.claudePath, [
+      const claudeProcess = pty.spawn(this.nodePath || 'node', [
+        this.claudePath,
         '--resume', sessionId,
         '--fork-session',
         '--print',
         '--output-format', 'json',
       ], {
+        name: 'xterm-color',
         cwd: workingDir,
-        env: process.env,
-        stdio: ['pipe', 'pipe', 'pipe'],
+        env: process.env as { [key: string]: string },
       });
 
       let output = '';
 
-      claudeProcess.stdout?.on('data', (data: Buffer) => {
-        output += data.toString();
+      claudeProcess.onData((data: string) => {
+        output += data;
       });
 
-      claudeProcess.on('close', (code) => {
-        if (code === 0) {
+      claudeProcess.onExit(({ exitCode }) => {
+        if (exitCode === 0) {
           // Try to extract new session ID from output
           try {
             const parsed = JSON.parse(output);
@@ -210,13 +232,12 @@ export class CLIBridgeService extends EventEmitter {
             resolve(sessionId);
           }
         } else {
-          reject(new Error(`Fork failed with code ${code}`));
+          reject(new Error(`Fork failed with code ${exitCode}`));
         }
       });
 
       // Send an empty message to trigger the fork
-      claudeProcess.stdin?.write('\n');
-      claudeProcess.stdin?.end();
+      claudeProcess.write('\n');
     });
   }
 

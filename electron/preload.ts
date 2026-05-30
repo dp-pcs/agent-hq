@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Session control
   takeOverSession: (sessionId: string, workingDir: string) =>
     ipcRenderer.invoke('take-over-session', sessionId, workingDir),
+  connectToSession: (sessionId: string) => ipcRenderer.invoke('connect-to-session', sessionId),
   releaseSession: (sessionId: string) => ipcRenderer.send('release-session', sessionId),
   sendMessage: (sessionId: string, message: string, mode: 'interrupt' | 'queue') =>
     ipcRenderer.send('send-message', sessionId, message, mode),
@@ -62,6 +63,7 @@ export interface ElectronAPI {
   watchSessions: () => void;
   stopWatching: () => void;
   takeOverSession: (sessionId: string, workingDir: string) => Promise<boolean>;
+  connectToSession: (sessionId: string) => Promise<void>;
   releaseSession: (sessionId: string) => void;
   sendMessage: (sessionId: string, message: string, mode: 'interrupt' | 'queue') => void;
   forkSession: (sessionId: string, workingDir: string) => Promise<string>;

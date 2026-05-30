@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
+import { exec } from 'child_process';
 import { SessionDiscoveryService } from './services/SessionDiscovery';
 import { CLIBridgeService } from './services/CLIBridge';
 import { RealtimeSyncService } from './services/RealtimeSync';
@@ -98,6 +99,18 @@ function setupIPC() {
 
   ipcMain.handle('fork-session', async (_, sessionId: string, workingDir: string) => {
     return cliBridge.forkSession(sessionId, workingDir);
+  });
+
+  ipcMain.handle('connect-to-session', async (_, sessionId: string) => {
+    const command = `osascript -e 'tell app "Terminal" to do script "tmux attach -t ${sessionId}"'`;
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`exec error: ${error}`);
+        return;
+      }
+      console.log(`stdout: ${stdout}`);
+      console.error(`stderr: ${stderr}`);
+    });
   });
 
   // Window controls

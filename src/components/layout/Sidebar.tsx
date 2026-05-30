@@ -4,8 +4,14 @@ import { StatusIndicator } from '../shared/StatusIndicator';
 import type { Session } from '../../types';
 
 export function Sidebar() {
-  const { sessions, selectedSessionId, selectSession, isLoading } =
-    useSessionStore();
+  const {
+    sessions,
+    selectedSessionId,
+    selectSession,
+    isLoading,
+    currentView,
+    setView,
+  } = useSessionStore();
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<Set<string>>(
     new Set()
   );
@@ -63,40 +69,65 @@ export function Sidebar() {
   return (
     <div className="w-64 bg-hq-surface border-r border-hq-border flex flex-col">
       {/* Header */}
-      <div className="p-3 border-b border-hq-border">
-        <h2 className="text-sm font-semibold text-hq-text-muted uppercase tracking-wide">
-          Workspaces
-        </h2>
+      <div className="p-2 border-b border-hq-border">
+        <div className="flex bg-hq-bg-dark p-1 rounded-lg">
+          <button
+            onClick={() => setView('dashboard')}
+            className={`flex-1 px-2 py-1 text-sm rounded-md ${
+              currentView === 'dashboard'
+                ? 'bg-hq-accent text-white'
+                : 'text-hq-text-muted hover:bg-hq-border/50'
+            }`}
+          >
+            Dashboard
+          </button>
+          <button
+            onClick={() => setView('workspace')}
+            className={`flex-1 px-2 py-1 text-sm rounded-md ${
+              currentView === 'workspace'
+                ? 'bg-hq-accent text-white'
+                : 'text-hq-text-muted hover:bg-hq-border/50'
+            }`}
+          >
+            Workspaces
+          </button>
+        </div>
       </div>
 
       {/* Workspace list */}
       <div className="flex-1 overflow-y-auto p-2">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-spin-slow">
-              <SpinnerIcon />
-            </div>
-          </div>
-        ) : workspaceGroups.size === 0 ? (
-          <div className="text-center py-8 text-hq-text-muted text-sm">
-            <p>No sessions found</p>
-            <p className="mt-1 text-xs">
-              Start a Claude Code session to see it here
-            </p>
-          </div>
-        ) : (
-          Array.from(workspaceGroups.entries()).map(([workspaceId, group]) => (
-            <WorkspaceGroup
-              key={workspaceId}
-              workspaceId={workspaceId}
-              name={group.name}
-              sessions={group.sessions}
-              isExpanded={expandedWorkspaces.has(workspaceId)}
-              onToggle={() => toggleWorkspace(workspaceId)}
-              selectedSessionId={selectedSessionId}
-              onSelectSession={selectSession}
-            />
-          ))
+        {currentView === 'workspace' && (
+          <>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin-slow">
+                  <SpinnerIcon />
+                </div>
+              </div>
+            ) : workspaceGroups.size === 0 ? (
+              <div className="text-center py-8 text-hq-text-muted text-sm">
+                <p>No sessions found</p>
+                <p className="mt-1 text-xs">
+                  Start a Claude Code session to see it here
+                </p>
+              </div>
+            ) : (
+              Array.from(workspaceGroups.entries()).map(
+                ([workspaceId, group]) => (
+                  <WorkspaceGroup
+                    key={workspaceId}
+                    workspaceId={workspaceId}
+                    name={group.name}
+                    sessions={group.sessions}
+                    isExpanded={expandedWorkspaces.has(workspaceId)}
+                    onToggle={() => toggleWorkspace(workspaceId)}
+                    selectedSessionId={selectedSessionId}
+                    onSelectSession={selectSession}
+                  />
+                )
+              )
+            )}
+          </>
         )}
       </div>
 
